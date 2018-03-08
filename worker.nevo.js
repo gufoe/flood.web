@@ -16,20 +16,20 @@ var Conf = {}
 
 // Init
 Conf.world = {
-    w: 10000,
+    w: 5000,
     h: 10000,
-    tileSize: 400,
-    default_meals: 700,
-    default_nevos: 200,
+    tileSize: 300,
+    default_meals: 160,
+    default_nevos: 120,
 }
 Conf.meal = {
-    energy: 200,
-    timeout: 10,
+    energy: 400,
+    timeout: 500,
     poison: 0,
 }
 Conf.nevo = {
     max_life: 5000,
-    default_life: 400,
+    default_life: 1000,
     viewRange: Math.PI / 1.7,
     viewAccuracy: 13,
     maxLinVel: 10,
@@ -44,39 +44,61 @@ class Universe {
     constructor (data) {
         var world = new World()
         this.nevos = []
-        console.log('Starting universe', data.creatures.length, 'DB [', data.source.size, data.target.size, ']')
+        // console.log('Starting universe', data.creatures.length, 'DB [', data.source.size, data.target.size, ']')
         range(Conf.world.default_nevos, i => {
             var n
             if (!data.creatures.length) {
                 n = new Nevo(world)
+                // console.log('generated', n)
             } else {
                 var a = Nevo.generate(pick(pick(data.creatures).data.nevos), world)
                 var b = Nevo.generate(pick(pick(data.creatures).data.nevos), world)
-                n = a.reproduce(b)
+                if (Math.random() > .5) {
+                    n = a.reproduce(b)
+                } else {
+                    n = a
+                }
+                for (var i in n.brains)
+                    n.brains[i].mutate()
+                // console.log('reproduced', n)
             }
             n.gen = { population: this.nevos }
             this.nevos.push(n)
+            // console.log('pushed', this.nevos.length)
         })
-
+        // console.log('posting message')
+        postMessage({
+            cmd: 'setItem',
+            args: [ 'lives', JSON.stringify(this.nevos.map(n => n.pack())) ],
+        })
         world.setup(this.nevos)
+        // console.log('starting world with nevos:', world.nevos.length)
         while (world.nevos.length > 0) {
             world.update()
         }
-
+        // this.age = world.age
         // Sort and slice
         // NOTE
         // determines the number of nevos packed in this universe
         this.nevos.sort((a, b) => b.fitness()-a.fitness())
-        this.nevos.splice(1)
+        // this.fit = this.nevos[0].fitness()+this.nevos[this.nevos.length-1].fitness()
+        this.fit = -world.meals.length
+        this.nevos.splice(10)
+        this.fit = 0
         this.nevos.forEach((n, i) => {
             this.nevos[i] = n.pack()
+            this.fit+= this.nevos[i].fitness
         })
+        this.fit/= this.nevos.length
+        this.nevos.splice(2)
+        console.log('world ended, age:', world.age, this.fitness())
 
         // Loop!
         Universe.loop(this)
     }
 
     fitness() {
+        return this.fit
         var c = this.nevos
         // Average fitnesses
         var avg = 0
@@ -89,7 +111,7 @@ class Universe {
 
     static loop(universe) {
         if (universe) {
-            console.log(universe.fitness())
+            // console.log('Universe fitnes was:', universe.fitness())
         }
         var creatures = universe ? [{
             parent_id: 0,
@@ -97,6 +119,6 @@ class Universe {
             fitness: universe.fitness()
         }] : null
 
-        loop('nevo-killers', 'nevo-killers', creatures)
+        loop('nevo-killers.0303.'+(5+Math.floor(Math.random()*3)), 'nevo-killers.0303.7', creatures)
     }
 }

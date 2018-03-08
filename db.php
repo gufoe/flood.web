@@ -5,7 +5,7 @@ class DB
     private $pdo;
 
     // Create the connection
-    public function __construct($host, $db, $user, $pass, $charset = 'utf8')
+    public function __construct($protocol, $host, $db, $user, $pass, $charset = 'utf8')
     {
         $options = [
             PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
@@ -13,7 +13,7 @@ class DB
             PDO::ATTR_EMULATE_PREPARES   => false,
         ];
 
-        $dsn = "mysql:host=$host;dbname=$db;charset=$charset";
+        $dsn = "$protocol:host=$host;dbname=$db;charset=$charset";
 
         $this->pdo = new PDO($dsn, $user, $pass, $options);
     }
