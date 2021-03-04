@@ -1,0 +1,12 @@
+{
+  "name": "flood.web",
+  "version": "1.0.0",
+  "main": "index.js",
+  "repository": "git@github.com:gufoe/flood.web.git",
+  "author": "Giacomo Rizzi <gufoes@gmail.com>",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^0.21.1",
+    "node-fetch": "^2.6.1"
+  }
+}

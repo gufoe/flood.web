@@ -1,46 +1,19 @@
 if (typeof require !== 'undefined') {
   importScripts = require('./is').importScripts
-  fetch = require('node-fetch')
+  axios = require('axios')
   FormData = require('form-data')
   postMessage = () => {}
 }
 
-var post = (url, data, ok, err) => {
-  function objectToFormData(obj, form, namespace) {
-    let fd = form || new FormData()
-    let formKey
-
-    for (let property in obj) {
-      if (obj.hasOwnProperty(property) && obj[property] != undefined) {
-        if (namespace) {
-          formKey = namespace + '[' + property + ']'
-        } else {
-          formKey = property
-        }
-
-        // if the property is an object, but not a File, use recursivity.
-        if (obj[property] instanceof Date) {
-          fd.append(formKey, obj[property].toISOString())
-        } else if (typeof obj[property] === 'object') {
-          objectToFormData(obj[property], fd, formKey)
-        } else {
-          // if it's a string or a File object
-          fd.append(formKey, obj[property])
-        }
-      }
-    }
-
-    return fd
-  }
-
+var post = (url, data, on_ok, on_err) => {
   if (!url || !url.match(/^https?:\/\//)) {
-    url = 'https://demo.gufoe.it/ai/public/flood.web/' + url
+    url = 'http://localhost:8090/' + url
   }
 
-  return fetch(url, {
-    method: 'POST',
-    body: objectToFormData(data),
-  }).then((res) => res.json().then(ok), err)
+  return axios.post(url, data).then(
+    (res) => console.log(res.data) && on_ok(res.data),
+    (err) => console.log(err.message) && on_err(err)
+  )
 }
 
 let _data = null
@@ -54,7 +27,7 @@ var loop = (source, target, creatures) => {
       c.data = JSON.stringify(c.data)
     })
     post(
-      'ga.php',
+      'record_and_get',
       {
         source,
         target,
@@ -64,8 +37,9 @@ var loop = (source, target, creatures) => {
     )
     setTimeout(() => new Universe(_data))
   } else {
-    post('ga.php', { source, target }, (res) => {
-      res.creatures.forEach((c) => {
+    let desc = [source, ['in1', 'in2'], ['y1', 'y2']]
+    post('generate', { Get: [[10, desc]] }, (res) => {
+      res[source].forEach((c) => {
         c.data = JSON.parse(c.data)
       })
       console.log(
