@@ -1,9 +1,10 @@
 var Net = function(net) {
-
+    this.id = Math.random().toString(36).substring(7)
     // Definition of the nodes
-    this.nodes = net ? clone(net.nodes) : {}
-    this.active = net ? net.active.slice() : []
-    this.outputs = net ? net.outputs.slice() : []
+    this.nodes   = net&&net.nodes ? clone(net.nodes) : {}
+    this.active  = net&&net.active ? net.active.slice() : []
+    this.outputs = net&&net.outputs ? net.outputs.slice() : []
+    this.params = net&&net.params ? clone(net.params) : {}
 
     this.reset()
 }
@@ -14,6 +15,7 @@ Net.prototype.reset = function() {
         this.nodes[i].val = 0
         this.nodes[i].used = 0
     }
+    return this
 }
 
 // Measure net complexity
@@ -40,29 +42,29 @@ Net.prototype.plasticity = function() {
 // 4 - change synapse weight
 // 5 - remove synapse from node
 // 6 - remove node (and related synapses)
-Net.prototype.mutate = function(n) {
-    // TODO: change based on complexity
-    // console.log('mutating', n)
-    for (var i = 0; i < (n || 1); i++) {
-        var done
-        for (var j = 0; j < 10; j++) {
-
-            var m = pick(keys(Net.mutations))
-            // console.log('round', i, j, m)
-            done = Net.mutations[m](this)
-            if (done) {
-                // console.log('mut', m)
-                break
-            } else {
-                // console.log('!mut')
-            }
-        }
-        // done || console.log('!done')
-    }
-
-    // this.optimize()
-    return this
-}
+// Net.prototype.mutate = function(n) {
+//     // TODO: change based on complexity
+//     // console.log('mutating', n)
+//     for (var i = 0; i < (n || 1); i++) {
+//         var done
+//         for (var j = 0; j < 10; j++) {
+//
+//             var m = pick(keys(Net.mutations))
+//             // console.log('round', i, j, m)
+//             done = Net.mutations[m](this)
+//             if (done) {
+//                 // console.log('mut', m)
+//                 break
+//             } else {
+//                 // console.log('!mut')
+//             }
+//         }
+//         // done || console.log('!done')
+//     }
+//
+//     // this.optimize()
+//     return this
+// }
 
 // Removes unused circuits
 Net.prototype.optimize = function() {
@@ -79,8 +81,8 @@ Net.prototype.optimize = function() {
         if (!this.nodes[i].used) {
             // console.log('del', i)
             delete(this.nodes[i])
-            this.active.remove(i)
-            this.outputs.remove(i)
+            remove(this.active, i)
+            remove(this.outputs, i)
         }
     }
 }
@@ -99,6 +101,7 @@ Net.prototype.tick = function() {
 
     // Tick
     var todo = []
+    var done = []
 
     this.outputs.forEach(id => {
         todo.push(this.node(id))
@@ -106,19 +109,27 @@ Net.prototype.tick = function() {
 
     while(todo.length) {
         var n = todo.shift()
-        n.used = true
-
-        n.new_val = Net.funs[n.act](n)
-    }
-
-
-    for (var i in this.nodes) {
-        var n = this.nodes[i]
-        if (!n.input) {
-            n.val = n.new_val
+        done.push(n)
+        var val = n.bias
+        var count = 0
+        for (var i in n.inputs) {
+            // console.log('calc', i, n.inputs[i],  calc(i) )
+            if (!n.input && todo.indexOf(n) < 0 && done.indexOf(n) < 0) {
+                todo.push(this.nodes[n.input[i]])
+            }
+            val += this.val(i) * n.inputs[i]
+            count++
         }
-        delete(n.new_val)
+        // if (isNaN(n.multiplier)) console.log('multiplier is nan')
+        n.new_val = Net.funs[n.act](val/(count+1)*n.multiplier)
     }
+
+
+    done.forEach(n => {
+        n.used = true
+        n.val = n.new_val
+        delete(n.new_val)
+    })
 }
 
 Net.prototype.val = function(id, act) {
@@ -126,13 +137,6 @@ Net.prototype.val = function(id, act) {
 
     if (!n) {
         n = this.newNode(false, true, id, act)
-        // var r = Net.mutations.newSynapse.call(this, 'tick', node)
-        // if (!r) console.log('not added tick to', node)
-        for (var i = 0; i < 10; i++) {
-            var r = Net.mutations.newSynapse(this, null, n)
-            var r = Net.mutations.newSynapse(this, n, null)
-            // if (!r) console.log('not added syn to', node)
-        }
     }
 
     return n.val
@@ -154,7 +158,7 @@ Net.prototype.lock = function(id, plasticity) {
 Net.prototype.findSourcedNeuron = function() {
     for (var i = 0; i < 10; i++) {
         var n = this.node(pick(this.active))
-        if (n && len(n.inputs)) return n
+        if (n && size(n.inputs)) return n
     }
     return null
 }
@@ -169,20 +173,75 @@ Net.prototype.newNode = function(input, output, id, act) {
         input: !!input,
         output: !!output,
         used: 0,
-        bias: 0,
+        bias: 0,//Net.randWeight(),
         val: 0,
         id: id ? id : Net.uid(),
+        multiplier: 1,
     }
     this.nodes[n.id] = n
-    if (!input) {
-        range(2, () => Net.mutations.newSynapse(this, null, n))
-        range(2, () => Net.mutations.newSynapse(this, n, null))
+    if (n.plasticity > 0) {
         this.active.push(n.id)
+        range(randInt(this.params.synapsesPerNode || 0), () => {
+            var dst = pick(keys(this.nodes))
+            n.inputs[dst] = 10*Net.randWeight()
+        })
+        range(randInt(this.params.synapsesPerNode || 0), () => {
+            var src = this.node(pick(this.active))
+            src.inputs[n.id] = 10*Net.randWeight()
+        })
     }
     if (output) {
         this.outputs.push(n.id)
     }
     return n
+}
+
+
+Net.prototype.crossover = function(net) {
+    var nodes = {}
+    var outputs = []
+    var active = []
+    var params = {}
+
+    // Crossover nodes
+    for (var i in this.nodes) {
+        var na = this.nodes[i]
+        var nb = net.nodes[i]
+        if (nb) nodes[i] = pty(na.plasticity) < pty(nb.plasticity) ? na : nb
+        else if (pty(.5)) nodes[i] = na
+    }
+    for (var i in net.nodes) {
+        if (!this.nodes[i] && pty(.5)) nodes[i] = net.nodes[i]
+    }
+
+    // Crossover params
+    for (var i in this.params) {
+        if (net.params[i]) params[i] = (pty(.5) ? this : net).params[i]
+        else if (pty(.5)) params[i] = this.params[i]
+    }
+    for (var i in net.params) {
+        if (!this.params[i] && pty(.5)) params[i] = net.params[i]
+    }
+
+    // Remove invalid inputs and fill active and output arrays
+    for (var i in nodes) {
+        var n = nodes[i]
+        if (n.output) outputs.push(n.id)
+        if (n.plasticity > 0.000001) active.push(n.id)
+
+        for (var j in n.inputs) {
+            if (!(j in nodes)) {
+                delete(n.inputs[j])
+            }
+        }
+    }
+
+    return new Net({
+        nodes,
+        active,
+        outputs,
+        params
+    })
 }
 
 Net.prototype.node = function(n) {
@@ -200,98 +259,90 @@ Net.prototype.id = function(n) {
 
 Net.prototype.mute = function(n) {
     n = this.node(n)
-    if (n.plasticity > rnd()*1.1) {
-        // console.log('pass')
-        return true
+    if (n.plasticity < rand(1)) {
+        return false
     } else {
         // console.log('lock', node, n.plasticity)
-        n.plasticity *= .95
-        if (n.plasticity < 0.01) {
-            this.active.remove(n.id)
-        }
-        return false
+        // console.log('plast from', n.plasticity)
+        n.plasticity *= .99
+        // console.log('to', n.plasticity)
+        // if (n.plasticity < 0.01) {
+        //     remove(this.active, n.id)
+        // }
+        return true
     }
 }
 
-Net.randWeight = () => {
-    return (pty(.5) ? 1 : -1) * pick([0, .3, .5, 1, 1.5, 2])
+Net.prototype.plasticity = function() {
+    var sum = 0
+    this.active.forEach(id => sum+= this.nodes[id].plasticity)
+    sum/= this.active.length
+    return {
+        percent_active: this.active.length/Object.keys(this.nodes).length,
+        avg_plasticity: sum
+    }
 }
 
-Net.uid = () => {
-    return Math.floor((1 + Math.random()) * 0x100000)
-        .toString(16)
-        .substring(1);
+Net.prototype.getParam = function(name, def) {
+    if (!(name in this.params))
+        this.params[name] = def
+    return this.params[name]
+}
+Net.prototype.setParam = function(name, value) {
+    this.params[name] = value
+    return this.params[name]
 }
 
-Net.mutations = {
-    newSynapse(_, src, dst) {
-        if (pty(.4)) return false
-        var n = dst ? _.node(dst) : _.node(pick(_.active))
-        if (!n || !_.mute(n)) return false
-        var src = src ? _.id(src) : pick(keys(_.nodes))
-        n.inputs[src] = Net.randWeight()
-        return true
-    },
-    newNode(_) {
-        if (pty(.7)) return false
-        var n = _.newNode()
-        range(2, () => Net.mutations.newSynapse(_, null, n))
-        range(2, () => Net.mutations.newSynapse(_, n, null))
-        return true
-    },
-    // mutateBias(_) {
-    //     var n = _.node(pick(_.active))
-    //     if (!n || !_.mute(n)) return false
-    //     n.bias*= Net.randWeight()
-    //     return true
-    // },
-    mutateActivation(_) {
-        var n = _.node(pick(_.active))
-        if (!n || n.fixed_action || !_.mute(n)) return false
-        n.act = Net.randFun()
-        return true
-    },
-    // mutateWeight(_) {
-    //     var n = _.findSourcedNeuron()
-    //     if (!n || !_.mute(n)) return false
-    //     var src = pick(keys(n.inputs))
-    //     n.inputs[src]*= Net.randWeight()
-    //     return true
-    // },
-    removeSynapse(_) {
-        if (pty(.5)) return false
-        var n = _.findSourcedNeuron()
-        if (!n || !_.mute(n)) return false
-        var src = pick(keys(n.inputs))
-        delete(n.inputs[src])
-        return true
-    },
-    removeNode(_) {
-        if (pty(.9)) return false
-        var n = _.node(pick(_.active))
-        if (!n || !_.mute(n)) return false
-        delete(_.nodes[n.id])
-        for (var i in _.nodes) {
-            delete(_.nodes[i].inputs[n.id])
+Net.prototype.mutate = function() {
+    if (pty(this.getParam('mrate', .1))) this.params.mrate += 0.1*(Math.random()*2-1)*this.params.mrate
+
+    // Remove nodes
+    while (pty(this.getParam('mrate-removenodes', .01))) this.removeNode(pick(this.active))
+
+    // Add nodes
+    while (pty(this.getParam('mrate', .1))) this.newNode()
+
+    this.active.forEach(id => {
+        var n = this.nodes[id]
+
+        if (!this.mute(n)) return
+        // console.log('mutating', this.id, n.id)
+        mrate = n.plasticity*rand(this.params.mrate)
+
+        // Mutate stuff
+        if (pty(mrate)) n.bias = Net.randWeight()
+        if (pty(mrate)) n.multiplier+= Net.randWeight()
+        if (pty(mrate)) n.act = Net.randFun()
+
+        // Add synapse
+        while (pty(mrate)) n.inputs[pick(keys(this.nodes))] = Net.randWeight()
+
+        // Mutate weights
+        for (var i in n.inputs) {
+            if (pty(mrate)) n.inputs[i] = Net.randWeight()
         }
-        _.active.remove(n.id)
-        _.outputs.remove(n.id)
-        return true
-    },
+    })
+    this.optimize()
+    return this
+}
+
+Net.prototype.removeNode = function(node) {
+    var n = this.node(node)
+    if (!n) return
+    delete(this.nodes[n.id])
+    for (var i in this.nodes) {
+        delete(this.nodes[i].inputs[n.id])
+    }
+    remove(this.active, n.id)
+    remove(this.outputs, n.id)
 }
 
 Net.funs = {
-    sum: (_, n) => {
-        var tot = 0
-        for (var i in n.inputs) tot+= _.nodes[i].val
-        return tot
-    },
-    id: (_, n) => Net.funs.sum(_, n),
-    avg: (_, n) => Net.funs.sum(_, n) / size(n.inputs),
-    sig: (_, n) => 1 - 2 / (1 + Math.exp(-Net.funs.sum(_, n)*4)),
-    // bool: x => x > 0 ? 1 : 0,
-    // sign: x => x > 0 ? 1 : -1,
-    // neg: x => -x,
+    id: x => x,
+    sig: x => - 1 + 2 / (1 + Math.exp(-x)),
+    bool: x => x > 0 ? 1 : 0,
+    sign: x => x > 0 ? 1 : -1,
+    neg: x => -x,
     // log: x => Math.log(Math.abs(x)),
     // abs: x => Math.abs(x),
     // exp: x => Math.exp(x),
@@ -302,4 +353,15 @@ Net.funs = {
 Net.randFun = () => {
     var act = pick(keys(Net.funs))
     return act
+}
+
+Net.randWeight = () => {
+    return Math.random()*2-1
+    return (pty(.5) ? 1 : -1) * pick([0, .1, .25, .5, 1, 1.5, 2])
+}
+
+Net.uid = () => {
+    return Math.floor((1 + Math.random()) * 0x100000)
+        .toString(16)
+        .substring(1);
 }

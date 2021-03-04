@@ -13,12 +13,11 @@ var handler = (what) => {
   }
   // console.log('res', res)
 }
-
-var w = new Worker('worker.js')
-w.onmessage = handler
-
-var w = new Worker('worker.js')
-w.onmessage = handler
+return
+var w1 = new Worker('worker.js')
+w1.onmessage = handler
+var w2 = new Worker('worker.js')
+w2.onmessage = handler
 //
 // var w = new Worker('worker.js')
 // w.onmessage = handler
@@ -27,4 +26,8 @@ w.onmessage = handler
 // w.onmessage = handler
 
 
-setTimeout(() => location.reload(), 60000)
+setTimeout(() => {
+    w1.terminate()
+    w2.terminate()
+    location.reload()
+}, 60000)
