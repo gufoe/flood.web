@@ -1,5 +1,12 @@
-importScripts('net.js')
-importScripts('grafo.js')
+{
+    importScripts('projects/nevo/utils/utils.js')
+    importScripts('projects/nevo/utils/perlin.js')
+    importScripts('projects/nevo/utils/angle.js')
+    importScripts('projects/nevo/utils/vec.js')
+    importScripts('projects/nevo/utils/distr.js')
+    importScripts('projects/nevo/utils/seq.js')
+    importScripts('projects/nevo/brain/brain.js')
+}
 importScripts('utils.js')
 
 
@@ -12,6 +19,7 @@ class Thing {
         if (thing) {
             this.data.net = new Net(thing.data.net)
             this.data.net.mutate()
+            // console.log(this.data.net)
         } else {
             this.data.net = new Net()
         }
@@ -112,7 +120,7 @@ class Thing {
                 // net.set(word, 0)
             })
 
-            for (var i = 0; i < 20 && net.val('done?') > 0; i++) {
+            for (var i = 0; i < 20 && net.val('done?') < 0; i++) {
                 net.tick()
             }
             if (net.val('done?') > 0) {
@@ -128,6 +136,7 @@ class Thing {
                     top = n
                 }
             }
+
             verbose && console.log(s, ' --- ', top.id)
             if (top.id == answer) {
                 this.fitness++
@@ -145,7 +154,7 @@ var verybest = null
 var last_rounds = null
 var last_best = null
 
-class Uni {
+class Universe {
     constructor(data) {
         // console.clear()
         console.info('From', data.source.name, '['+data.source.size+']',
@@ -173,13 +182,25 @@ class Uni {
 
         last_rounds = i
         last_best = best
+        this.best = best
 
-        setTimeout(() => loop(Uni.source_experiment, Uni.target_experiment, [clone(best)]), 100)
+        Universe.loop(this)
+    }
+
+    fitness() {
+        return this.best.fitness
+    }
+
+    static loop(uni) {
+        Universe.source_experiment = 'null'
+        Universe.target_experiment = 'talk100'
+
+        var creatures = uni ? [{
+            parent_id: 0,
+            data: [clone(uni.best)],
+            fitness: uni.fitness(),
+        }] : null
+
+        loop('talk100', 'talk100', creatures)
     }
 }
-
-Uni.source_experiment = 'talk50'
-Uni.target_experiment = 'talk50'
-
-// Start
-loop(Uni.source_experiment, Uni.target_experiment)

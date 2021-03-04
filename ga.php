@@ -18,6 +18,7 @@ function input($name)
 function db() {
     static $db;
     if (!$db) {
+        $t = microtime(true);
         $db = new DB(
             conf('DB_PROTOCOL', 'mysql'),
             conf('DB_HOST', 'mysql.x'),
@@ -25,6 +26,7 @@ function db() {
             conf('DB_USER', 'root'),
             conf('DB_PASS', 'secret')
         );
+        _log('db in '. (microtime(true) - $t));
     }
     return $db;
 }
@@ -41,11 +43,14 @@ function ga($experiment) {
 	_log("start $id");
     $count = db()->query($q, [ $experiment ], true)['count'];
     if (!$count) return [];
+
     $ret = [];
-    for ($i = 0; $i < 3; $i++) {
-        // $offset = sqrt($count-1);
-        $offset = $count-1;
-        for ($j = 0; $j < 6; $j++) {
+    // for every creature to be created
+    for ($i = 0; $i < 10; $i++) {
+        // $j < ?
+        $offset = (int) sqrt($count); // consider only top percent
+        // For $j times get random < $j
+        for ($j = 0; $j < 5; $j++) {
             $offset = rand(0, $offset);
         }
         $q = 'SELECT * FROM creatures WHERE';
@@ -58,11 +63,31 @@ function ga($experiment) {
 		_log("f$i $id");
         $c['data'] = file_get_contents("data/creature-{$c['id']}.json");
         if ($c['data']) {
+            $d = json_decode($c['data']);
+            $d->offset = $offset;
+            $c['data'] = json_encode($d);
             $ret[] = $c;
         }
     }
+
+    $ids = [];
+    foreach ($ret as $c) $ids[] = $c['id'];
+    if (!empty($ids)) {
+        db()->exec('UPDATE creatures set children = children+1 where id in ('.implode(',', $ids).')');
+    }
+
 	_log("end $id");
     return $ret;
+}
+
+if (($exp = input('bestof'))) {
+    $q = 'SELECT id FROM creatures WHERE';
+    $q.= ' experiment=? order by fitness desc limit 1';
+    $id = @db()->query($q, [ $exp ], true)['id'];
+    if ($id) {
+      echo @file_get_contents("data/creature-$id.json");
+    }
+    exit;
 }
 
 if (($exp = input('target')) && ($creatures = input('creatures'))) {
@@ -83,23 +108,33 @@ if (($exp = input('target')) && ($creatures = input('creatures'))) {
         }
         $time = microtime(true);
         $id = db()->insert('creatures', $data);
-        _log('inserted in '.(microtime(true)-$time).' secs');
-        $file = "data/creature-$id.json";
-        $saved = file_put_contents($file, $c['data']);
-        if (!$saved) {
-            die("Cannot save creature data to $file");
+
+        $num = db()->query('select count(*) as c from creatures where experiment=?', [$exp], true)['c'];
+
+        // filter and keep only the top 10% of the souls
+        $minfit = db()->query('select fitness as f from creatures where experiment=? order by fitness desc limit 1 offset ?', [$exp, $num/10], true)['f'];
+        // var_dump($num);
+        if ($c['fitness'] > $minfit) {
+            $file = "data/creature-$id.json";
+            $saved = file_put_contents($file, $c['data']);
+            if (!$saved) {
+                die("Cannot save creature data to $file");
+            }
         }
+
+        _log('inserted in '.(microtime(true)-$time).' secs');
         // db()->commit();
     }
     _log('total insert: '.(microtime(true)-$time_tot).' secs');
+    $time_tot = microtime(true);
     echo json_encode(count($creatures));
+    _log('echoed data: '.(microtime(true)-$time_tot).' secs');
     exit;
 }
 
 if (input('source')) {
-    $source = [];//db()->query('SELECT experiment as name, COUNT(*) as size FROM creatures WHERE experiment=? GROUP BY experiment', [ input('source') ], true);
-    $target = [];//db()->query('SELECT experiment as name, COUNT(*) as size FROM creatures WHERE experiment=? GROUP BY experiment', [ input('target') ], true);
-
+    $source = db()->query('SELECT experiment as name, COUNT(*) as size FROM creatures WHERE experiment=? GROUP BY experiment', [ input('source') ], true);
+    $target = db()->query('SELECT experiment as name, COUNT(*) as size FROM creatures WHERE experiment=? GROUP BY experiment', [ input('target') ], true);
     echo json_encode([
         'creatures' => ga(input('source')),
         'source' => [
@@ -170,9 +205,9 @@ $q = "SELECT
     FROM (select (IF(@row IS NULL, @row:=0, @row:=@row+1 )) as count, fitness from creatures where "
     .implode(' and ', $filters)
     ." order by created_at asc) creatures"
-    ." group by FLOOR(count/10)";
+    ." group by FLOOR(count/".((int)input('chunk')?:100).")";
     // ." order by count asc";
-    // ." group by FLOOR(count/".(($exp_count+2)/1000).")"
+    // ." group by FLOOR(count/".(($exp_count+2)/1000).")";
     // ." order by created_at asc";
 // echo $exp_count;
 $stats_min = db()->query($q, $filter_data);
@@ -245,6 +280,7 @@ $stats_min = db()->query($q, $filter_data);
             </select>
             <input type="date" placeholder="Since" name="since" value="<?=e(input('since'))?>">
             <input type="date" placeholder="To" name="to" value="<?=e(input('to'))?>">
+            <input type="number" step="1" placeholder="Chunk Size" name="chunk" value="<?=e(input('chunk') ?: 100)?>">
             <input type="submit" value="Go">
         </form>
         <div id="graphdiv" class="graph"></div>
@@ -267,7 +303,7 @@ $stats_min = db()->query($q, $filter_data);
                 showRoller: true,
                 animatedZooms: true,
                 width: window.innerWidth,
-                height: 400,
+                height: window.innerHeight-200,
                 colors: ['#2ecc71', '#f1c40f', '#e84118', '#9c88ff'],
                 gridLineColor: '#3b3f4f',
                 axisLineColor: '#718093',
